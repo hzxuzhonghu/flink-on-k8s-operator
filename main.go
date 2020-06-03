@@ -18,10 +18,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"strings"
 
 	v1beta1 "github.com/googlecloudplatform/flink-operator/api/v1beta1"
 	"github.com/googlecloudplatform/flink-operator/controllers"
+	"github.com/googlecloudplatform/flink-operator/controllers/batchscheduler"
+
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -51,9 +55,13 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var watchNamespace string
+	var enableBatchScheduler bool
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&enableBatchScheduler, "enable-batch-scheduler", false,
+		fmt.Sprintf("Enable batch schedulers for pods' scheduling, the available batch schedulers are: (%s).",
+			strings.Join(batchscheduler.GetRegisteredNames(), ",")))
 	flag.StringVar(
 		&watchNamespace,
 		"watch-namespace",
@@ -61,7 +69,7 @@ func main() {
 		"Watch custom resources in the namespace, ignore other namespaces. If empty, all namespaces will be watched.")
 	flag.Parse()
 
-	ctrl.SetLogger(zap.Logger(true))
+	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
@@ -75,8 +83,9 @@ func main() {
 	}
 
 	err = (&controllers.FlinkClusterReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("FlinkCluster"),
+		Client:          mgr.GetClient(),
+		Log:             ctrl.Log.WithName("controllers").WithName("FlinkCluster"),
+		BatchScheduling: enableBatchScheduler,
 	}).SetupWithManager(mgr)
 	if err != nil {
 		setupLog.Error(err, "Unable to create controller", "controller", "FlinkCluster")

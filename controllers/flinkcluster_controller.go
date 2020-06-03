@@ -23,6 +23,8 @@ import (
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/googlecloudplatform/flink-operator/api/v1beta1"
 	"github.com/googlecloudplatform/flink-operator/controllers/flinkclient"
+	"github.com/googlecloudplatform/flink-operator/controllers/model"
+
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -33,9 +35,10 @@ import (
 
 // FlinkClusterReconciler reconciles a FlinkCluster object
 type FlinkClusterReconciler struct {
-	Client client.Client
-	Log    logr.Logger
-	Mgr    ctrl.Manager
+	Client          client.Client
+	Log             logr.Logger
+	Mgr             ctrl.Manager
+	BatchScheduling bool
 }
 
 // +kubebuilder:rbac:groups=flinkoperator.k8s.io,resources=flinkclusters,verbs=get;list;watch;create;update;patch;delete
@@ -65,11 +68,12 @@ func (reconciler *FlinkClusterReconciler) Reconcile(
 			Log:        log,
 			HTTPClient: flinkclient.HTTPClient{Log: log},
 		},
-		request:  request,
-		context:  context.Background(),
-		log:      log,
-		recorder: reconciler.Mgr.GetEventRecorderFor("FlinkOperator"),
-		observed: ObservedClusterState{},
+		request:               request,
+		context:               context.Background(),
+		log:                   log,
+		recorder:              reconciler.Mgr.GetEventRecorderFor("FlinkOperator"),
+		observed:              ObservedClusterState{},
+		enableBatchScheduling: reconciler.BatchScheduling,
 	}
 	return handler.reconcile(request)
 }
@@ -90,14 +94,15 @@ func (reconciler *FlinkClusterReconciler) SetupWithManager(
 // FlinkClusterHandler holds the context and state for a
 // reconcile request.
 type FlinkClusterHandler struct {
-	k8sClient   client.Client
-	flinkClient flinkclient.FlinkClient
-	request     ctrl.Request
-	context     context.Context
-	log         logr.Logger
-	recorder    record.EventRecorder
-	observed    ObservedClusterState
-	desired     DesiredClusterState
+	k8sClient             client.Client
+	flinkClient           flinkclient.FlinkClient
+	request               ctrl.Request
+	context               context.Context
+	log                   logr.Logger
+	recorder              record.EventRecorder
+	observed              ObservedClusterState
+	desired               model.DesiredClusterState
+	enableBatchScheduling bool
 }
 
 func (handler *FlinkClusterHandler) reconcile(
@@ -130,9 +135,9 @@ func (handler *FlinkClusterHandler) reconcile(
 	log.Info("---------- 2. Update cluster status ----------")
 
 	var updater = ClusterStatusUpdater{
-		k8sClient: handler.k8sClient,
-		context:   handler.context,
-		log:       handler.log,
+		k8sClient: k8sClient,
+		context:   context,
+		log:       log,
 		recorder:  handler.recorder,
 		observed:  handler.observed,
 	}
@@ -188,13 +193,14 @@ func (handler *FlinkClusterHandler) reconcile(
 	log.Info("---------- 4. Take actions ----------")
 
 	var reconciler = ClusterReconciler{
-		k8sClient:   handler.k8sClient,
+		k8sClient:   k8sClient,
 		flinkClient: flinkClient,
-		context:     handler.context,
-		log:         handler.log,
+		context:     context,
+		log:         log,
 		observed:    handler.observed,
-		desired:     handler.desired,
-		recorder:    handler.recorder,
+		desired:     handler.desired, recorder: handler.recorder,
+
+		enableBatchScheduling: handler.enableBatchScheduling,
 	}
 	result, err := reconciler.reconcile()
 	if err != nil {

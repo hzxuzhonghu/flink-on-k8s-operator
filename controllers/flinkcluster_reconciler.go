@@ -27,7 +27,10 @@ import (
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/googlecloudplatform/flink-operator/api/v1beta1"
+	"github.com/googlecloudplatform/flink-operator/controllers/batchscheduler"
 	"github.com/googlecloudplatform/flink-operator/controllers/flinkclient"
+	"github.com/googlecloudplatform/flink-operator/controllers/model"
+
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -39,13 +42,14 @@ import (
 // ClusterReconciler takes actions to drive the observed state towards the
 // desired state.
 type ClusterReconciler struct {
-	k8sClient   client.Client
-	flinkClient flinkclient.FlinkClient
-	context     context.Context
-	log         logr.Logger
-	observed    ObservedClusterState
-	desired     DesiredClusterState
-	recorder    record.EventRecorder
+	k8sClient             client.Client
+	flinkClient           flinkclient.FlinkClient
+	context               context.Context
+	log                   logr.Logger
+	observed              ObservedClusterState
+	desired               model.DesiredClusterState
+	recorder              record.EventRecorder
+	enableBatchScheduling bool
 }
 
 var requeueResult = ctrl.Result{RequeueAfter: 10 * time.Second, Requeue: true}
@@ -59,6 +63,20 @@ func (reconciler *ClusterReconciler) reconcile() (ctrl.Result, error) {
 	if reconciler.observed.cluster == nil {
 		reconciler.log.Info("The cluster has been deleted, no action to take")
 		return ctrl.Result{}, nil
+	}
+
+	// If batch-scheduling enabled
+	if reconciler.enableBatchScheduling {
+		// TODO: add scheduler name in `FlinkCluster` when we need to support multiple batch schedulers.
+		scheduler, err := batchscheduler.GetScheduler("")
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		err = scheduler.DoBatchScheduling(reconciler.observed.cluster, &reconciler.desired)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	err = reconciler.reconcileConfigMap()
