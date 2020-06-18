@@ -25,13 +25,14 @@ import (
 
 var (
 	mutex            sync.Mutex
+	once             = sync.Once{}
 	schedulerPlugins = map[string]schedulerinterface.BatchScheduler{}
 )
 
-func init() {
+func lazyInitialize() {
 	scheduler, err := volcano.New()
 	if err != nil {
-		klog.Fatalf("Failed initializing volcano batch scheduler: %v", err)
+		klog.Errorf("Failed initializing volcano batch scheduler: %v", err)
 		return
 	}
 	schedulerPlugins[scheduler.Name()] = scheduler
@@ -39,6 +40,10 @@ func init() {
 
 // GetScheduler gets the real batch scheduler.
 func GetScheduler(name string) (schedulerinterface.BatchScheduler, error) {
+	once.Do(func() {
+		lazyInitialize()
+	})
+
 	mutex.Lock()
 	defer mutex.Unlock()
 	// TODO: respect real scheduler name
@@ -49,6 +54,9 @@ func GetScheduler(name string) (schedulerinterface.BatchScheduler, error) {
 }
 
 func GetRegisteredNames() []string {
+	once.Do(func() {
+		lazyInitialize()
+	})
 	mutex.Lock()
 	defer mutex.Unlock()
 	var pluginNames []string
