@@ -21,7 +21,6 @@ import (
 
 	"golang.org/x/net/context"
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
@@ -34,7 +33,6 @@ import (
 )
 
 const (
-	PodGroupName  = "podgroups.scheduling.volcano.sh"
 	schedulerName = "volcano"
 )
 
@@ -46,16 +44,6 @@ func New() (schedulerinterface.BatchScheduler, error) {
 	config, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
 		return nil, err
-	}
-
-	extClient, err := apiextensionsclient.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize k8s extension client with error %v", err)
-	}
-
-	if _, err := extClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(
-		context.TODO(), PodGroupName, metav1.GetOptions{}); err != nil {
-		return nil, fmt.Errorf("podGroup CRD is required to exists in current cluster error: %s", err)
 	}
 
 	vcClient, err := volcanoclient.NewForConfig(config)
