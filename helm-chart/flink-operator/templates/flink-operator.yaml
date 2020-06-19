@@ -331,6 +331,7 @@ spec:
           name: https
       - args:
         - --metrics-addr=127.0.0.1:8080
+        - --enable-batch-scheduler=
         - --watch-namespace=
         command:
         - /flink-operator
