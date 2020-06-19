@@ -11,6 +11,7 @@ kind: MutatingWebhookConfiguration
 metadata:
   creationTimestamp: null
   name: flink-operator-mutating-webhook-configuration
+  namespace: {{ .Values.flinkOperatorNamespace }}
 webhooks:
 - clientConfig:
     caBundle: Cg==
@@ -20,6 +21,32 @@ webhooks:
       path: /mutate-flinkoperator-k8s-io-v1beta1-flinkcluster
   failurePolicy: Fail
   name: mflinkcluster.flinkoperator.k8s.io
+  rules:
+  - apiGroups:
+    - flinkoperator.k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - flinkclusters
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: flink-operator-validating-webhook-configuration
+  namespace: {{ .Values.flinkOperatorNamespace }}
+webhooks:
+- clientConfig:
+    caBundle: Cg==
+    service:
+      name: flink-operator-webhook-service
+      namespace: {{ .Values.flinkOperatorNamespace }}
+      path: /validate-flinkoperator-k8s-io-v1beta1-flinkcluster
+  failurePolicy: Fail
+  name: vflinkcluster.flinkoperator.k8s.io
   rules:
   - apiGroups:
     - flinkoperator.k8s.io
@@ -106,10 +133,13 @@ rules:
   - ""
   resources:
   - pods
+  - secrets
   verbs:
+  - create
   - get
   - list
   - watch
+  - patch
 - apiGroups:
   - ""
   resources:
@@ -201,13 +231,23 @@ rules:
   verbs:
   - get
 - apiGroups:
-    - scheduling.volcano.sh
+  - admissionregistration.k8s.io
   resources:
-    - podgroups
+  - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
   verbs:
-    - get
-    - create
-    - update
+  - get
+  - create
+  - update
+  - patch
+- apiGroups:
+  - scheduling.volcano.sh
+  resources:
+  - podgroups
+  verbs:
+  - get
+  - create
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -331,8 +371,8 @@ spec:
           name: https
       - args:
         - --metrics-addr=127.0.0.1:8080
-        - --enable-batch-scheduler=
-        - --watch-namespace=
+        - --enable-batch-scheduler={{ .Values.enableBatchScheduler }}
+        - --watch-namespace={{ .Values.watchNamespace }}
         command:
         - /flink-operator
         image: {{ .Values.operatorImage.name }}
@@ -358,30 +398,5 @@ spec:
         secret:
           defaultMode: 420
           secretName: webhook-server-cert
----
-apiVersion: admissionregistration.k8s.io/v1beta1
-kind: ValidatingWebhookConfiguration
-metadata:
-  creationTimestamp: null
-  name: flink-operator-validating-webhook-configuration
-webhooks:
-- clientConfig:
-    caBundle: Cg==
-    service:
-      name: flink-operator-webhook-service
-      namespace: {{ .Values.flinkOperatorNamespace }}
-      path: /validate-flinkoperator-k8s-io-v1beta1-flinkcluster
-  failurePolicy: Fail
-  name: vflinkcluster.flinkoperator.k8s.io
-  rules:
-  - apiGroups:
-    - flinkoperator.k8s.io
-    apiVersions:
-    - v1beta1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - flinkclusters
 {{- end }}
 
